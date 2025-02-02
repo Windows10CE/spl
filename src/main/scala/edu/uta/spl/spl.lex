@@ -35,6 +35,8 @@ import java_cup.runtime.Symbol;
 
 %%
 
+\/\*[^]*?\*\/     {}
+
 "array"         { return symbol(sym.ARRAY); }
 "boolean"       { return symbol(sym.BOOLEAN); }
 "by"            { return symbol(sym.BY); }
@@ -91,7 +93,6 @@ import java_cup.runtime.Symbol;
 
 [a-zA-Z][a-zA-Z0-9]* { return symbol(sym.ID, yytext()); }
 
-\/\*.+?\*\/     {}
 [ \t\r\n]       {}
 
 .               { lexical_error("Illegal character"); }

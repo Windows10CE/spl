@@ -48,7 +48,7 @@ parser code {:
                     return res + "\"" + (String) s.value + "\"";
             }
         };
-        return "?";
+        return token_names[s.sym];
     }
 
     public void syntax_error ( Symbol token ) {
@@ -90,26 +90,152 @@ terminal         AND, ARRAY, BOOLEAN, BY, DEF, DIV, ELSE, EQUAL, EXIT, FALSE,
                  PLUS, MINUS, TIMES, TRUE, LT, LEQ, GT, GEQ, EQ, NEQ, COLON, SEMI,
                  COMMA, SHARP, DOT, LP, RP, LB, RB, LSB, RSB, UMINUS;
 
-non terminal Program                         program;
-non terminal BlockSt                         block_content;
-non terminal List<Definition>                defs;
-non terminal Stmt                            stmt;
-non terminal List<Stmt>                      stmts;
-non terminal Expr                            expr;
+non terminal program;
+non terminal block_content;
+non terminal defs;
+non terminal def;
+non terminal var_def;
+non terminal type_def;
+non terminal func_def;
+non terminal type;
+non terminal types;
+non terminal binding_list;
+non terminal bindings;
+non terminal binding;
+non terminal lvalue;
+non terminal expr;
+non terminal expr_list;
+non terminal exprs;
+non terminal field_assignment;
+non terminal field_assignments;
+non terminal stmt;
+non terminal optional_else;
+non terminal lvalues;
+non terminal stmts;
+
+precedence nonassoc ELSE;
+precedence nonassoc LP, RP, LB, RB, LSB, RSB, SEMI;
+precedence nonassoc COMMA;
+precedence left     OR;
+precedence left     AND;
+precedence right    NOT;
+precedence nonassoc EQ, NEQ, LT, GT, LEQ, GEQ;
+precedence left     PLUS, MINUS;
+precedence left     TIMES, DIV, MOD;
+precedence right    UMINUS;
 
 start with program;
 
-program         ::= block_content:b                     {: SPL.setAST(new Program(b)); :}
+program         ::= block_content
                 ;
-block_content   ::= defs:dl stmts:sl                    {: RESULT = new BlockSt(dl,sl); :}
-                |   stmts:sl                            {: RESULT = new BlockSt(nil,sl); :}
+block_content   ::= defs stmts
+                |   stmts
                 ;
-defs            ::= DEF
+
+defs            ::= defs def SEMI
+                |   def SEMI
                 ;
-expr            ::= INTEGER_LITERAL:n                   {: RESULT = new IntConst(n); :}
+def             ::= var_def
+                |   type_def
+                |   func_def
                 ;
-stmt            ::= WHILE LP expr:e RP stmt:s           {: RESULT = new WhileSt(e,s); :}
+var_def         ::= VAR ID EQUAL expr
+                |   VAR ID COLON type EQUAL expr
                 ;
-stmts           ::= stmt:s SEMI                         {: RESULT = append(nil,s); :}
-                |   stmts:sl stmt:s SEMI                {: RESULT = append(sl,s); :}
+type_def        ::= TYPE ID EQUAL type
+                ;
+func_def        ::= DEF ID LP binding_list RP LB block_content RB
+                |   DEF ID LP binding_list RP COLON type LB block_content RB
+                ;
+
+type            ::= INT | FLOAT | BOOLEAN | STRING
+                |   ID
+                |   ARRAY LSB type RSB
+                |   LB bindings RB
+                |   LP RP
+                |   LP type RP
+                |   LP types RP
+                ;
+types           ::= types COMMA type
+                | type
+                ;
+
+binding_list    ::= // nothing
+                |   bindings
+                ;
+bindings        ::= bindings COMMA binding
+                |   binding
+                ;
+binding         ::= ID COLON type
+                ;
+
+lvalue          ::= ID
+                |   lvalue LSB expr RSB
+                |   lvalue DOT ID
+                |   lvalue SHARP INTEGER_LITERAL
+                ;
+
+expr            ::= INTEGER_LITERAL | FLOAT_LITERAL | STRING_LITERAL | TRUE | FALSE
+                |   lvalue
+                |   MINUS expr %prec UMINUS
+                |   NOT expr
+                |   expr PLUS expr
+                |   expr MINUS expr
+                |   expr TIMES expr
+                |   expr DIV expr
+                |   expr MOD expr
+                |   expr AND expr
+                |   expr OR expr
+                |   expr EQ expr
+                |   expr NEQ expr
+                |   expr LT expr
+                |   expr LEQ expr
+                |   expr GT expr
+                |   expr GEQ expr
+                |   ARRAY LP expr COMMA expr RP
+                |   ID LP expr_list RP
+                |   LB field_assignments RB
+                |   LP RP
+                |   LP expr RP
+                |   LP exprs RP
+                |   LSB expr_list RSB
+                ;
+expr_list       ::= // nothing
+                | exprs
+                ;
+exprs           ::= exprs COMMA expr
+                |   expr
+                ;
+
+field_assignment    ::= ID EQUAL expr
+                    ;
+field_assignments   ::= field_assignments COMMA field_assignment
+                    | field_assignment
+                    ;
+
+stmt            ::= lvalue EQUAL expr
+                |   ID LP expr_list RP
+                |   LB block_content RB
+                |   READ LP lvalues RP
+                |   PRINT LP expr_list RP
+                |   IF LP expr RP stmt optional_else
+                |   FOR LP ID EQUAL expr TO expr RP stmt
+                |   FOR LP ID EQUAL expr TO expr BY expr RP stmt
+                |   WHILE LP expr RP stmt
+                |   LOOP stmt
+                |   EXIT
+                |   RETURN
+                |   RETURN expr
+                ;
+
+optional_else   ::= // nothing
+                |   ELSE stmt
+                ;
+
+lvalues         ::= lvalues COMMA lvalue
+                | lvalue
+                ;
+
+stmts           ::= stmt SEMI
+                |   stmts stmt SEMI
                 ;
