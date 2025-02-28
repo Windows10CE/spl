@@ -91,27 +91,27 @@ terminal         AND, ARRAY, BOOLEAN, BY, DEF, DIV, ELSE, EQUAL, EXIT, FALSE,
                  COMMA, SHARP, DOT, LP, RP, LB, RB, LSB, RSB, UMINUS;
 
 non terminal program;
-non terminal BlockStmt block_content;
-non terminal List<Definition> defs;
-non terminal Definition def;
-non terminal VarDef var_def;
-non terminal TypeDef type_def;
-non terminal FuncDef func_def;
-non terminal Type type;
-non terminal List<Type> types;
-non terminal List<Bind<Type>> binding_list;
-non terminal List<Bind<Type>> bindings;
-non terminal Bind binding;
-non terminal Lvalue lvalue;
-non terminal Expr expr;
-non terminal List<Expr> expr_list;
-non terminal List<Expr> exprs;
-non terminal Bind<Expr> field_assignment;
-non terminal List<Bind<Expr>> field_assignments;
-non terminal Stmt stmt;
-non terminal Stmt optional_else;
-non terminal List<Lvalue> lvalues;
-non terminal List<Stmt> stmts;
+non terminal BlockSt            block_content;
+non terminal List<Definition>   defs;
+non terminal Definition         def;
+non terminal VarDef             var_def;
+non terminal TypeDef            type_def;
+non terminal FuncDef            func_def;
+non terminal Type               type;
+non terminal List<Type>         types;
+non terminal List<Bind<Type>>   binding_list;
+non terminal List<Bind<Type>>   bindings;
+non terminal Bind               binding;
+non terminal Lvalue             lvalue;
+non terminal Expr               expr;
+non terminal List<Expr>         expr_list;
+non terminal List<Expr>         exprs;
+non terminal Bind<Expr>         field_assignment;
+non terminal List<Bind<Expr>>   field_assignments;
+non terminal Stmt               stmt;
+non terminal Stmt               optional_else;
+non terminal List<Lvalue>       lvalues;
+non terminal List<Stmt>         stmts;
 
 precedence nonassoc ELSE;
 precedence nonassoc LP, RP, LB, RB, LSB, RSB, SEMI;
@@ -172,73 +172,77 @@ bindings        ::= bindings:bs COMMA binding:b {: RESULT = append(bs, b); :}
 binding         ::= ID:id COLON type:t  {: RESULT = new Bind<Type>(id, t); :}
                 ;
 
-lvalue          ::= ID
-                |   lvalue LSB expr RSB
-                |   lvalue DOT ID
-                |   lvalue SHARP INTEGER_LITERAL    {: 
+lvalue          ::= ID:id                               {: RESULT = new Var(id); :}
+                |   lvalue:l LSB expr:e RSB             {: RESULT = new ArrayDeref(new LvalExp(l), e); :}
+                |   lvalue:l DOT ID:id                  {: RESULT = new RecordDeref(new LvalExp(l), id); :}
+                |   lvalue:l SHARP INTEGER_LITERAL:i    {: RESULT = new TupleDeref(new LvalExp(l), i); :}
                 ;
 
-expr            ::= INTEGER_LITERAL | FLOAT_LITERAL | STRING_LITERAL | TRUE | FALSE
-                |   lvalue
-                |   MINUS expr %prec UMINUS
-                |   NOT expr
-                |   expr PLUS expr
-                |   expr MINUS expr
-                |   expr TIMES expr
-                |   expr DIV expr
-                |   expr MOD expr
-                |   expr AND expr
-                |   expr OR expr
-                |   expr EQ expr
-                |   expr NEQ expr
-                |   expr LT expr
-                |   expr LEQ expr
-                |   expr GT expr
-                |   expr GEQ expr
-                |   ARRAY LP expr COMMA expr RP
-                |   ID LP expr_list RP
-                |   LB field_assignments RB
-                |   LP RP
-                |   LP expr RP
-                |   LP exprs RP
-                |   LSB expr_list RSB
+expr            ::= INTEGER_LITERAL:i                   {: RESULT = new IntConst(i); :}
+                |   FLOAT_LITERAL:f                     {: RESULT = new FloatConst(f); :}
+                |   STRING_LITERAL:s                    {: RESULT = new StringConst(s); :}
+                |   TRUE                                {: RESULT = new BooleanConst(true); :}
+                |   FALSE                               {: RESULT = new BooleanConst(false); :}
+                |   lvalue:l                            {: RESULT = new LvalExp(l); :}
+                |   MINUS expr:e                        {: RESULT = new UnOpExp("minus", e); :} %prec UMINUS           
+                |   NOT expr:e                          {: RESULT = new UnOpExp("not", e); :}
+                |   expr:e1 PLUS expr:e2                {: RESULT = new BinOpExp("plus", e1, e2); :}
+                |   expr:e1 MINUS expr:e2               {: RESULT = new BinOpExp("minus", e1, e2); :}
+                |   expr:e1 TIMES expr:e2               {: RESULT = new BinOpExp("times", e1, e2); :}
+                |   expr:e1 DIV expr:e2                 {: RESULT = new BinOpExp("div", e1, e2); :}
+                |   expr:e1 MOD expr:e2                 {: RESULT = new BinOpExp("mod", e1, e2); :}
+                |   expr:e1 AND expr:e2                 {: RESULT = new BinOpExp("and", e1, e2); :}
+                |   expr:e1 OR expr:e2                  {: RESULT = new BinOpExp("or", e1, e2); :}
+                |   expr:e1 EQ expr:e2                  {: RESULT = new BinOpExp("eq", e1, e2); :}
+                |   expr:e1 NEQ expr:e2                 {: RESULT = new BinOpExp("neq", e1, e2); :}
+                |   expr:e1 LT expr:e2                  {: RESULT = new BinOpExp("lt", e1, e2); :}
+                |   expr:e1 LEQ expr:e2                 {: RESULT = new BinOpExp("leq", e1, e2); :}
+                |   expr:e1 GT expr:e2                  {: RESULT = new BinOpExp("gt", e1, e2); :}
+                |   expr:e1 GEQ expr:e2                 {: RESULT = new BinOpExp("geq", e1, e2); :}
+                |   ARRAY LP expr:e1 COMMA expr:e2 RP   {: RESULT = new ArrayGen(e1, e2); :}
+                |   ID:id LP expr_list:es RP            {: RESULT = new CallExp(id, es); :}
+                |   LB field_assignments:fs RB          {: RESULT = new RecordExp(fs); :}
+                |   LP RP                               {: RESULT = new NullExp(); :}
+                |   LP expr:e RP                        {: RESULT = e; :}
+                |   LP exprs:es RP                      {: RESULT = new TupleExp(es); :}
+                |   LSB expr_list:es RSB                {: RESULT = new ArrayExp(es); :}
                 ;
-expr_list       ::= // nothing
-                | exprs
+expr_list       ::=         {: RESULT = nil; :} // nothing
+                | exprs:es  {: RESULT = es; :}
                 ;
-exprs           ::= exprs COMMA expr
-                |   expr
+exprs           ::= exprs:es COMMA expr:e   {: RESULT = append(es, e); :}
+                |   expr:e                  {: RESULT = append(nil, e); :}
                 ;
 
-field_assignment    ::= ID EQUAL expr
+field_assignment    ::= ID:id EQUAL expr:e  {: RESULT = new Bind<Expr>(id, e); :}
                     ;
-field_assignments   ::= field_assignments COMMA field_assignment
-                    | field_assignment
+field_assignments   ::= field_assignments:fs COMMA field_assignment:f   {: RESULT = append(fs, f); :}
+                    | field_assignment:f                                {: RESULT = append(nil, f); :}
                     ;
 
-stmt            ::= lvalue EQUAL expr
-                |   ID LP expr_list RP
-                |   LB block_content RB
-                |   READ LP lvalues RP
-                |   PRINT LP expr_list RP
-                |   IF LP expr RP stmt optional_else
-                |   FOR LP ID EQUAL expr TO expr RP stmt
-                |   FOR LP ID EQUAL expr TO expr BY expr RP stmt
-                |   WHILE LP expr RP stmt
-                |   LOOP stmt
-                |   EXIT
-                |   RETURN
-                |   RETURN expr
+stmt            ::= lvalue:l EQUAL expr:e                                       {: RESULT = new AssignSt(l, e); :}
+                |   ID:id LP expr_list:es RP                                    {: RESULT = new CallSt(id, es); :}
+                |   LB block_content:b RB                                       {: RESULT = b; :}
+                |   READ LP lvalues:ls RP                                       {: RESULT = new ReadSt(ls); :}
+                |   PRINT LP expr_list:es RP                                    {: RESULT = new PrintSt(es); :}
+                |   IF LP expr:e RP stmt:s optional_else:oe                     {: RESULT = new IfSt(e, s, oe); :}
+                |   FOR LP ID:id EQUAL expr:s TO expr:t RP stmt:st              {: RESULT = new ForSt(id, s, t, new IntConst(1), st); :}
+                |   FOR LP ID:id EQUAL expr:s TO expr:t BY expr:b RP stmt:st    {: RESULT = new ForSt(id, s, t, b, st); :}
+                |   WHILE LP expr:e RP stmt:s                                   {: RESULT = new WhileSt(e, s); :}
+                |   LOOP stmt:s                                                 {: RESULT = new LoopSt(s); :}
+                |   EXIT                                                        {: RESULT = new ExitSt(); :}
+                |   RETURN                                                      {: RESULT = new ReturnSt(); :}
+                |   RETURN expr:e                                               {: RESULT = new ReturnValueSt(e); :}
                 ;
 
-optional_else   ::= // nothing
-                |   ELSE stmt
+optional_else   ::=             {: RESULT = null; :} // nothing
+                |   ELSE stmt:s {: RESULT = s; :}
                 ;
 
-lvalues         ::= lvalues COMMA lvalue
-                | lvalue
+lvalues         ::= lvalues:ls COMMA lvalue:l   {: RESULT = append(ls, l); :}
+                |   lvalue:l                    {: RESULT = append(nil, l); :}
                 ;
 
-stmts           ::= stmt SEMI
-                |   stmts stmt SEMI
+stmts           ::= stmt:s SEMI             {: RESULT = append(nil, s); :}
+                |   stmts:ss stmt:s SEMI    {: RESULT = append(ss, s); :}
                 ;
