@@ -91,27 +91,27 @@ terminal         AND, ARRAY, BOOLEAN, BY, DEF, DIV, ELSE, EQUAL, EXIT, FALSE,
                  COMMA, SHARP, DOT, LP, RP, LB, RB, LSB, RSB, UMINUS;
 
 non terminal program;
-non terminal block_content;
-non terminal defs;
-non terminal def;
-non terminal var_def;
-non terminal type_def;
-non terminal func_def;
-non terminal type;
-non terminal types;
-non terminal binding_list;
-non terminal bindings;
-non terminal binding;
-non terminal lvalue;
-non terminal expr;
-non terminal expr_list;
-non terminal exprs;
-non terminal field_assignment;
-non terminal field_assignments;
-non terminal stmt;
-non terminal optional_else;
-non terminal lvalues;
-non terminal stmts;
+non terminal BlockStmt block_content;
+non terminal List<Definition> defs;
+non terminal Definition def;
+non terminal VarDef var_def;
+non terminal TypeDef type_def;
+non terminal FuncDef func_def;
+non terminal Type type;
+non terminal List<Type> types;
+non terminal List<Bind<Type>> binding_list;
+non terminal List<Bind<Type>> bindings;
+non terminal Bind binding;
+non terminal Lvalue lvalue;
+non terminal Expr expr;
+non terminal List<Expr> expr_list;
+non terminal List<Expr> exprs;
+non terminal Bind<Expr> field_assignment;
+non terminal List<Bind<Expr>> field_assignments;
+non terminal Stmt stmt;
+non terminal Stmt optional_else;
+non terminal List<Lvalue> lvalues;
+non terminal List<Stmt> stmts;
 
 precedence nonassoc ELSE;
 precedence nonassoc LP, RP, LB, RB, LSB, RSB, SEMI;
@@ -126,53 +126,56 @@ precedence right    UMINUS;
 
 start with program;
 
-program         ::= block_content
+program         ::= block_content:bstmt   {: SPL.setAST(new Program(bstmt)); :}
                 ;
-block_content   ::= defs stmts
-                |   stmts
-                ;
-
-defs            ::= defs def SEMI
-                |   def SEMI
-                ;
-def             ::= var_def
-                |   type_def
-                |   func_def
-                ;
-var_def         ::= VAR ID EQUAL expr
-                |   VAR ID COLON type EQUAL expr
-                ;
-type_def        ::= TYPE ID EQUAL type
-                ;
-func_def        ::= DEF ID LP binding_list RP LB block_content RB
-                |   DEF ID LP binding_list RP COLON type LB block_content RB
+block_content   ::= defs:ds stmts:ss  {: RESULT = new BlockSt(ds, ss); :}
+                |   stmts:ss          {: RESULT = new BlockSt(nil, ss); :}
                 ;
 
-type            ::= INT | FLOAT | BOOLEAN | STRING
-                |   ID
-                |   ARRAY LSB type RSB
-                |   LB bindings RB
-                |   LP RP
-                |   LP type RP
-                |   LP types RP
+defs            ::= defs:ds def:d SEMI   {: RESULT = append(ds, d); :}
+                |   def:d SEMI           {: RESULT = append(nil, d); :}
                 ;
-types           ::= types COMMA type
-                | type
+def             ::= var_def:v   {: RESULT = v; :}
+                |   type_def:t  {: RESULT = t; :}
+                |   func_def:f  {: RESULT = f; :}
+                ;
+var_def         ::= VAR ID:id EQUAL expr:e                 {: RESULT = new VarDef(id, new AnyType(), e); :}
+                |   VAR ID:id COLON type:t EQUAL expr:e    {: RESULT = new VarDef(id, t, e); :}
+                ;
+type_def        ::= TYPE ID:id EQUAL type:t {: RESULT = new TypeDef(id, t); :}
+                ;
+func_def        ::= DEF ID:id LP binding_list:bs RP LB block_content:b RB              {: RESULT = new FuncDef(id, bs, new NoType(), b); :}
+                |   DEF ID:id LP binding_list:bs RP COLON type:t LB block_content:b RB {: RESULT = new FuncDef(id, bs, t, b); :}
                 ;
 
-binding_list    ::= // nothing
-                |   bindings
+type            ::= INT:i                 {: RESULT = new IntType(); :}
+                |   FLOAT                 {: RESULT = new FloatType(); :}
+                |   BOOLEAN               {: RESULT = new BooleanType(); :}
+                |   STRING                {: RESULT = new StringType(); :}
+                |   ID:id                 {: RESULT = new NamedType(id); :}
+                |   ARRAY LSB type:t RSB  {: RESULT = new ArrayType(t); :}
+                |   LB bindings:bs RB     {: RESULT = new RecordType(bs); :}
+                |   LP RP                 {: RESULT = new NoType(); :}
+                |   LP type:t RP          {: RESULT = t; :}
+                |   LP types:ts RP        {: RESULT = new TupleType(ts); :}
                 ;
-bindings        ::= bindings COMMA binding
-                |   binding
+types           ::= types:ts COMMA type:t   {: RESULT = append(ts, t); :}
+                | type:t                    {: RESULT = append(nil, t); :}
                 ;
-binding         ::= ID COLON type
+
+binding_list    ::=             {: RESULT = nil; :} // nothing
+                |   bindings:bs {: RESULT = bs; :}
+                ;
+bindings        ::= bindings:bs COMMA binding:b {: RESULT = append(bs, b); :}
+                |   binding:b                   {: RESULT = append(nil, b); :}
+                ;
+binding         ::= ID:id COLON type:t  {: RESULT = new Bind<Type>(id, t); :}
                 ;
 
 lvalue          ::= ID
                 |   lvalue LSB expr RSB
                 |   lvalue DOT ID
-                |   lvalue SHARP INTEGER_LITERAL
+                |   lvalue SHARP INTEGER_LITERAL    {: 
                 ;
 
 expr            ::= INTEGER_LITERAL | FLOAT_LITERAL | STRING_LITERAL | TRUE | FALSE
