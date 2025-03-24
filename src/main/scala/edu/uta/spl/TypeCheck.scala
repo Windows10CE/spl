@@ -113,8 +113,55 @@ class TypeCheck extends TypeChecker {
            else ltp
 
       /* PUT YOUR CODE HERE */
+      case IntConst(_) => IntType()
+      case FloatConst(_) => FloatType()
+      case StringConst(_) => StringType()
+      case BooleanConst(_) => BooleanType()
+      case NullExp() => AnyType()
+      
+      case LvalExp(lv) => typecheck(lv)
 
-      case _ => throw new Error("Wrong expression: "+e)
+      case UnOpExp(op, operand) =>
+        val operandType = typecheck(operand)
+        (op, operandType) match {
+          case ("minus", IntType() | FloatType()) => operandType
+          case ("not", BooleanType()) => operandType
+          case _ => error(s"$op is not supported on type $operandType")
+        }
+
+      case CallExp(name, args) =>
+        val argTypes = args.map(typecheck)
+        st.lookup(name) match {
+          case Some(FuncDeclaration(outT, params, _, _, _)) =>
+            val paramTypes = params.map(_.value)
+            if (argTypes.length != paramTypes.length) error(s"expected ${paramTypes.length} arguments, got ${argTypes.length}")
+            else argTypes.zip(paramTypes).find(x => !typeEquivalence(x._1, x._2)) match {
+              case Some((argT, paramT)) => error(s"expected type $paramT, got type $argT")
+              case None => outT
+            }
+          case Some(_) => error(s"$name is not a function")
+          case None => error(s"$name does not exist in this scope")
+        }
+
+      case RecordExp(fields) => RecordType(fields.map(bind => Bind(bind.name, typecheck(bind.value))))
+
+      case ArrayExp(elements) => ArrayType(elements.map(typecheck).fold(AnyType())(
+        (a, b) => (a, b) match {
+          case (AnyType(), t) => t
+          case (t, AnyType()) => t
+          case (t1, t2) =>
+            if (typeEquivalence(t1, t2)) t1
+            else error(s"types $t1 and $t2 are different, and therefore an array cannot be created with both")
+        }
+      ))
+
+      case ArrayGen(length, value) =>
+        if (!typeEquivalence(IntType(), typecheck(length))) {
+          error(s"$length should have type int, but does not")
+        }
+        ArrayType(typecheck(value))
+
+      case TupleExp(exprs) => new TupleType(exprs.map(typecheck))
     } )
 
   /** typecheck an Lvalue AST */
@@ -128,8 +175,33 @@ class TypeCheck extends TypeChecker {
         }
 
       /* PUT YOUR CODE HERE */
+      case ArrayDeref(array, index) => 
+        if (!typeEquivalence(IntType(), typecheck(index))) {
+          error(s"$index should have type int, but does not")
+        }
+        expandType(typecheck(array)) match {
+          case ArrayType(inner) => inner
+          case t => error(s"$t is not an array type")
+        }
 
-      case _ => throw new Error("Wrong lvalue: "+e)
+      case RecordDeref(record, attr) =>
+        expandType(typecheck(record)) match {
+          case t @ RecordType(fields) =>
+            fields.find(_.name == attr) match {
+              case Some(f) => f.value
+              case None => error(s"$t does not contain the field $attr")
+            }
+          case t => error(s"$t is not a record type")
+        }
+
+      case TupleDeref(tuple, index) =>
+        expandType(typecheck(tuple)) match {
+          case tt @ TupleType(inners) => inners.lift(index) match {
+            case Some(t) => t
+            case None => error(s"$tt only has ${inners.length} elements, and do cannot be indexed at $index")
+          }
+          case t => error(s"Expected tuple type, found $t")
+        }
     } )
 
   /** typecheck a statement AST using the expected type of the return value from the current function */
@@ -140,7 +212,70 @@ class TypeCheck extends TypeChecker {
               error("Incompatible types in assignment: "+e)
 
       /* PUT YOUR CODE HERE */
+      case CallSt(name, args) =>
+        st.lookup(name) match {
+          case Some(FuncDeclaration(_, params, _, _, _)) =>
+            if (args.length != params.length) {
+              error(s"supplied ${args.length} args, expected ${params.length}")
+            }
+            else args.map(typecheck).zip(params).find(x => !typeEquivalence(x._1, x._2.value)) match {
+              case Some((argT, paramT)) => error(s"Argument type $argT does not match parameter type $paramT")
+              case None => ()
+            }
+          case Some(_) => error(s"$name is not a function")
+          case None => error(s"$name is not the name of any binding in scope")
+        }
 
+      case ReadSt(args) =>
+        args.map(typecheck).find(arg => !arg.isInstanceOf[IntType] && !arg.isInstanceOf[FloatType]) match {
+          case Some(failedType) => error(s"All read arguments must be int or float, found $failedType")
+          case None => ()
+        }
+
+      case PrintSt(args) =>
+        args.map(typecheck).find(arg => !arg.isInstanceOf[IntType] && !arg.isInstanceOf[FloatType] && !arg.isInstanceOf[BooleanType] && !arg.isInstanceOf[StringType]) match {
+          case Some(t) => error(s"All print arguments must be int, float, boolean, or string, found $t")
+          case None => ()
+        }
+
+      case IfSt(cond, thenSt, elseSt) =>
+        if (!typeEquivalence(typecheck(cond), BooleanType()))
+          error(s"if statements must have conditions that evaluate to bools")
+        typecheck(thenSt, expected_type)
+        if (elseSt != null) typecheck(elseSt, expected_type)
+
+      case WhileSt(cond, stmt) =>
+        if (!typeEquivalence(typecheck(cond), BooleanType()))
+          error(s"while loops must have conditions that evaluate to bools")
+        typecheck(stmt, expected_type)
+
+      case LoopSt(stmt) => typecheck(stmt, expected_type)
+
+      case ForSt(v, initial, step, increment, stmt) =>
+        (typecheck(initial), typecheck(step), typecheck(increment)) match {
+          case (IntType(), IntType(), IntType()) => ()
+          case _ => error(s"For loop initial values, end values, and increment values must be ints")
+        }
+        
+        st.begin_scope()
+        st.insert(v, VarDeclaration(IntType(), 0, 0))
+        typecheck(stmt, expected_type)
+        st.end_scope()
+
+      case ExitSt() => ()
+
+      case ReturnSt() => if (!expected_type.isInstanceOf[NoType]) error(s"Function is expected to return $expected_type")
+      case ReturnValueSt(v) =>
+        if (expected_type.isInstanceOf[NoType]) error("Function cannot have return value, as it returns nothing")
+        val retT = typecheck(v)
+        if (!typeEquivalence(retT, expected_type)) error(s"Function was expected to return $expected_type but instead returns $retT")
+
+      case BlockSt(decls, stmts) =>
+        st.begin_scope()
+        decls.foreach(typecheck)
+        stmts.foreach(stmt => typecheck(stmt, expected_type))
+        st.end_scope()
+        
       case _ => throw new Error("Wrong statement: "+e)
     } )
   }
@@ -156,8 +291,16 @@ class TypeCheck extends TypeChecker {
            st.end_scope()
 
       /* PUT YOUR CODE HERE */
+      case TypeDef(name, t) => st.insert(name, TypeDeclaration(t))
 
-      case _ => throw new Error("Wrong statement: "+e)
+      case VarDef(name, t, v) =>
+        val actualT = typecheck(v)
+        if (!typeEquivalence(t, actualT)) error(s"var was defined as $t but was initialized to $actualT")
+        val typeToUse = t match {
+          case AnyType() => actualT
+          case _ => t
+        }
+        st.insert(name, VarDeclaration(typeToUse, 0, 0))
     } )
   }
 
