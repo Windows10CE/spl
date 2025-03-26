@@ -123,19 +123,19 @@ class TypeCheck extends TypeChecker {
 
       case UnOpExp(op, operand) =>
         val operandType = typecheck(operand)
-        (op, operandType) match {
-          case ("minus", IntType() | FloatType()) => operandType
-          case ("not", BooleanType()) => operandType
+        op match {
+          case "minus" if typeEquivalence(operandType, IntType()) || typeEquivalence(operandType, FloatType()) => operandType
+          case "not" if typeEquivalence(operandType, BooleanType()) => operandType
           case _ => error(s"$op is not supported on type $operandType")
         }
 
       case CallExp(name, args) =>
-        val argTypes = args.map(typecheck)
         st.lookup(name) match {
           case Some(FuncDeclaration(outT, params, _, _, _)) =>
+            val argTypes = args.map(typecheck)
             val paramTypes = params.map(_.value)
             if (argTypes.length != paramTypes.length) error(s"expected ${paramTypes.length} arguments, got ${argTypes.length}")
-            else argTypes.zip(paramTypes).find(x => !typeEquivalence(x._1, x._2)) match {
+            else argTypes.zip(paramTypes).find { case (left, right) => !typeEquivalence(left, right) } match {
               case Some((argT, paramT)) => error(s"expected type $paramT, got type $argT")
               case None => outT
             }
@@ -145,15 +145,15 @@ class TypeCheck extends TypeChecker {
 
       case RecordExp(fields) => RecordType(fields.map(bind => Bind(bind.name, typecheck(bind.value))))
 
-      case ArrayExp(elements) => ArrayType(elements.map(typecheck).fold(AnyType())(
-        (a, b) => (a, b) match {
+      case ArrayExp(elements) => ArrayType(
+        elements.map(typecheck).fold(AnyType()) {
           case (AnyType(), t) => t
           case (t, AnyType()) => t
           case (t1, t2) =>
             if (typeEquivalence(t1, t2)) t1
             else error(s"types $t1 and $t2 are different, and therefore an array cannot be created with both")
         }
-      ))
+      )
 
       case ArrayGen(length, value) =>
         if (!typeEquivalence(IntType(), typecheck(length))) {
@@ -161,7 +161,7 @@ class TypeCheck extends TypeChecker {
         }
         ArrayType(typecheck(value))
 
-      case TupleExp(exprs) => new TupleType(exprs.map(typecheck))
+      case TupleExp(exprs) => TupleType(exprs.map(typecheck))
     } )
 
   /** typecheck an Lvalue AST */
@@ -198,7 +198,7 @@ class TypeCheck extends TypeChecker {
         expandType(typecheck(tuple)) match {
           case tt @ TupleType(inners) => inners.lift(index) match {
             case Some(t) => t
-            case None => error(s"$tt only has ${inners.length} elements, and do cannot be indexed at $index")
+            case None => error(s"Tuple type $tt only has ${inners.length} elements, and do cannot be indexed at $index")
           }
           case t => error(s"Expected tuple type, found $t")
         }
@@ -218,7 +218,7 @@ class TypeCheck extends TypeChecker {
             if (args.length != params.length) {
               error(s"supplied ${args.length} args, expected ${params.length}")
             }
-            else args.map(typecheck).zip(params).find(x => !typeEquivalence(x._1, x._2.value)) match {
+            else args.map(typecheck).zip(params).find { case (arg, param) => !typeEquivalence(arg, param.value) } match {
               case Some((argT, paramT)) => error(s"Argument type $argT does not match parameter type $paramT")
               case None => ()
             }
@@ -227,13 +227,13 @@ class TypeCheck extends TypeChecker {
         }
 
       case ReadSt(args) =>
-        args.map(typecheck).find(arg => !arg.isInstanceOf[IntType] && !arg.isInstanceOf[FloatType]) match {
+        args.map(arg => expandType(typecheck(arg))).find(arg => !arg.isInstanceOf[IntType] && !arg.isInstanceOf[FloatType]) match {
           case Some(failedType) => error(s"All read arguments must be int or float, found $failedType")
           case None => ()
         }
 
       case PrintSt(args) =>
-        args.map(typecheck).find(arg => !arg.isInstanceOf[IntType] && !arg.isInstanceOf[FloatType] && !arg.isInstanceOf[BooleanType] && !arg.isInstanceOf[StringType]) match {
+        args.map(arg => expandType(typecheck(arg))).find(arg => !arg.isInstanceOf[IntType] && !arg.isInstanceOf[FloatType] && !arg.isInstanceOf[BooleanType] && !arg.isInstanceOf[StringType]) match {
           case Some(t) => error(s"All print arguments must be int, float, boolean, or string, found $t")
           case None => ()
         }
@@ -252,10 +252,8 @@ class TypeCheck extends TypeChecker {
       case LoopSt(stmt) => typecheck(stmt, expected_type)
 
       case ForSt(v, initial, step, increment, stmt) =>
-        (typecheck(initial), typecheck(step), typecheck(increment)) match {
-          case (IntType(), IntType(), IntType()) => ()
-          case _ => error(s"For loop initial values, end values, and increment values must be ints")
-        }
+        if (!typeEquivalence(typecheck(initial), IntType()) || !typeEquivalence(typecheck(step), IntType()) || !typeEquivalence(typecheck(increment), IntType()))
+          error(s"For loop initial values, end values, and increment values must be ints")
         
         st.begin_scope()
         st.insert(v, VarDeclaration(IntType(), 0, 0))
