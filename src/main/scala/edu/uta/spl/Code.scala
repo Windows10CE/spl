@@ -60,6 +60,14 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
       case _ => throw new Error("Undefined variable: " + name)
     }
 
+  def emit_call[C](ctor: (String, IRexp, List[IRexp]) => C, name: String, args: List[Expr], level: Int, fname: String): C = {
+    val decl = st.lookup(name).get.asInstanceOf[FuncDeclaration]
+    var staticLink: IRexp = Reg("fp")
+    for (_ <- decl.level to level)
+      staticLink = Mem(Binop("PLUS", staticLink, IntValue(-8)))
+    ctor(decl.label, staticLink, args.map(code(_, level, fname)))
+  }
+
   /** return the IR code from the Expr e (level is the current function nesting level,
    *  fname is the name of the current function/procedure) */
   def code ( e: Expr, level: Int, fname: String ): IRexp =
@@ -100,12 +108,12 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
 
       case UnOpExp(op, operand) => Unop(op.toUpperCase, code(operand, level, fname))
 
-      case CallExp(name, args) =>
-        val decl = st.lookup(name).get.asInstanceOf[FuncDeclaration]
-        Call(decl.label, Reg("fp"), args.map(code(_, level, fname)))
+      case CallExp(name, args) => emit_call(Call, name, args, level, fname)
 
       case r @ RecordExp(fields) =>
         val rec = allocate_variable("RecordExp", typechecker.typecheck(r), fname)
+        // todo: why does the solution do this
+        name_counter += 1
         ESeq(
           Seq(
             Move(rec, Allocate(IntValue(fields.length)))
@@ -214,9 +222,7 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
       /* PUT YOUR CODE HERE */
       case AssignSt(dest, src) => Move(code(dest, level, fname), code(src, level, fname))
 
-      case CallSt(name, args) =>
-        val decl = st.lookup(name).get.asInstanceOf[FuncDeclaration]
-        CallP(decl.label, Reg("fp"), args.map(code(_, level, fname)))
+      case CallSt(name, args) => emit_call(CallP, name, args, level, fname)
       
       case BlockSt(decls, stmts) =>
         Seq(
@@ -260,12 +266,15 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
       case IfSt(cond, thenSt, elseSt) =>
         val endLabel = new_name("cont")
         val trueLabel = new_name("exit")
+        val condCode = code(cond, level, fname)
+        val thenCode = code(thenSt, level, fname, exit_label)
+        val elseCode = if (elseSt != null) code(elseSt, level, fname, exit_label) else Seq(Nil)
         Seq(List(
-          CJump(code(cond, level, fname), trueLabel),
-          if (elseSt != null) code(elseSt, level, fname, exit_label) else Seq(List()),
+          CJump(condCode, trueLabel),
+          elseCode,
           Jump(endLabel),
           Label(trueLabel),
-          code(thenSt, level, fname, exit_label),
+          thenCode,
           Label(endLabel)
         ))
 
