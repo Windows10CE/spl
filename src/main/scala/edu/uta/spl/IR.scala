@@ -18,7 +18,7 @@ case class Unop ( op: String, operand: IRexp ) extends IRexp
 case class Call ( name: String, static_link: IRexp, arguments: List[IRexp] ) extends IRexp
 /** evaluate the statement and return the value */
 case class ESeq ( stmt: IRstmt, value: IRexp ) extends IRexp
-/** allocate size number of bytes in the heap and return the object address */
+/** allocate size number of words in the heap and return the object address */
 case class Allocate ( size: IRexp ) extends IRexp
 
 

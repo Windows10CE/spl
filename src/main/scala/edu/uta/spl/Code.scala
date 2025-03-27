@@ -7,6 +7,8 @@
 
 package edu.uta.spl
 
+import edu.uta.spl
+
 
 abstract class CodeGenerator ( tc: TypeChecker )  {
   def typechecker: TypeChecker = tc
@@ -62,13 +64,13 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
    *  fname is the name of the current function/procedure) */
   def code ( e: Expr, level: Int, fname: String ): IRexp =
     e match {
-      case BinOpExp(op,left,right)
-        => val cl = code(left,level,fname)
+      case BinOpExp(op, left, right)
+      => val cl = code(left,level,fname)
            val cr = code(right,level,fname)
            val nop = op.toUpperCase()
            Binop(nop,cl,cr)
-      case ArrayGen(len,v)
-        => val A = allocate_variable(new_name("A"),typechecker.typecheck(e),fname)
+      case ArrayGen(len, v)
+      => val A = allocate_variable(new_name("A"),typechecker.typecheck(e),fname)
            val L = allocate_variable(new_name("L"),IntType(),fname)
            val V = allocate_variable(new_name("V"),typechecker.typecheck(v),fname)
            val I = allocate_variable(new_name("I"),IntType(),fname)
@@ -88,8 +90,73 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
                 A)
 
       /* PUT YOUR CODE HERE */
+      case IntConst(value) => IntValue(value)
+      case FloatConst(value) => FloatValue(value)
+      case StringConst(value) => StringValue(value)
+      case BooleanConst(value) => IntValue(if (value) 1 else 0)
+      case NullExp() => IntValue(0)
+      
+      case LvalExp(lv) => code(lv, level, fname)
 
-      case _ => throw new Error("Wrong expression: "+e)
+      case UnOpExp(op, operand) => Unop(op.toUpperCase, code(operand, level, fname))
+
+      case CallExp(name, args) =>
+        val decl = st.lookup(name).get.asInstanceOf[FuncDeclaration]
+        Call(decl.label, Reg("fp"), args.map(code(_, level, fname)))
+
+      case r @ RecordExp(fields) =>
+        val rec = allocate_variable("RecordExp", typechecker.typecheck(r), fname)
+        ESeq(
+          Seq(
+            Move(rec, Allocate(IntValue(fields.length)))
+            ::
+            fields.zipWithIndex.map {
+              case (field, index) =>
+                Move(
+                  Mem(Binop("PLUS", rec, IntValue(index * 4))),
+                  code(field.value, level, fname)
+                )
+            }
+          ),
+          rec
+        )
+
+      case ArrayExp(elems) =>
+        val arr = allocate_variable(new_name("ArrExp"), typechecker.typecheck(e), fname)
+        ESeq(
+          Seq(
+            List(
+              Move(arr, Allocate(IntValue(elems.length + 1))),
+              Move(Mem(arr), IntValue(elems.length))
+            )
+            :::
+            elems.zipWithIndex.map {
+              case (elem, index) =>
+                Move(
+                  Mem(Binop("PLUS", arr, IntValue(4 + index * 4))),
+                  code(elem, level, fname)
+                )
+            }
+          ),
+          arr
+        )
+        
+      case TupleExp(elems) =>
+        val tuple = allocate_variable(new_name("TupleExp"), typechecker.typecheck(e), fname)
+        ESeq(
+          Seq(
+            Move(tuple, Allocate(IntValue(elems.length)))
+            ::
+            elems.zipWithIndex.map {
+              case (elem, index) =>
+                Move(
+                  Mem(Binop("PLUS", tuple, IntValue(index * 4))),
+                  code(elem, level, fname)
+                )
+            }
+          ),
+          tuple
+        )
     }
 
   /** return the IR code from the Lvalue e (level is the current function nesting level,
@@ -106,6 +173,19 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
            }
 
      /* PUT YOUR CODE HERE */
+     case Var(name) => access_variable(name, level)
+
+     case ArrayDeref(a, i) =>
+       val arr = code(a, level, fname)
+       val index = code(i, level, fname)
+       val actualIndex = Binop("PLUS", index, IntValue(1))
+       val memoryOffset = Binop("TIMES", actualIndex, IntValue(4))
+       val addr = Binop("PLUS", arr, memoryOffset)
+       Mem(addr)
+
+     case TupleDeref(e, index) =>
+       val tuple = code(e, level, fname)
+       Mem(Binop("PLUS", tuple, IntValue(index * 4)))
 
      case _ => throw new Error("Wrong statement: " + e)
     }
@@ -132,8 +212,102 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
                     Label(exit)))
 
       /* PUT YOUR CODE HERE */
+      case AssignSt(dest, src) => Move(code(dest, level, fname), code(src, level, fname))
 
-      case _ => throw new Error("Wrong statement: " + e)
+      case CallSt(name, args) =>
+        val decl = st.lookup(name).get.asInstanceOf[FuncDeclaration]
+        CallP(decl.label, Reg("fp"), args.map(code(_, level, fname)))
+      
+      case BlockSt(decls, stmts) =>
+        Seq(
+          decls.map(code(_, fname, level))
+          :::
+          stmts.map(code(_, level, fname, exit_label))
+        )
+
+      case ReadSt(args) =>
+        Seq(
+          args.map(arg => 
+            SystemCall(
+              typechecker.expandType(typechecker.typecheck(arg)) match {
+                case IntType() => "READ_INT"
+                case FloatType() => "READ_FLOAT"
+                case _ => "not possible"
+              },
+              code(arg, level, fname)
+            )
+          )
+        )
+
+      case PrintSt(args) =>
+        Seq(
+          args.map(arg => 
+            SystemCall(
+              typechecker.expandType(typechecker.typecheck(arg)) match {
+                case IntType() => "WRITE_INT"
+                case FloatType() => "WRITE_FLOAT"
+                case StringType() => "WRITE_STRING"
+                case BooleanType() => "WRITE_BOOL"
+                case _ => "not possible"
+              },
+              code(arg, level, fname)
+            )
+          )
+          :::
+          List(SystemCall("WRITE_STRING", StringValue("\\n")))
+        )
+
+      case IfSt(cond, thenSt, elseSt) =>
+        val endLabel = new_name("cont")
+        val trueLabel = new_name("exit")
+        Seq(List(
+          CJump(code(cond, level, fname), trueLabel),
+          if (elseSt != null) code(elseSt, level, fname, exit_label) else Seq(List()),
+          Jump(endLabel),
+          Label(trueLabel),
+          code(thenSt, level, fname, exit_label),
+          Label(endLabel)
+        ))
+
+      case WhileSt(cond, stmt) =>
+        val loopLabel = new_name("loop")
+        val exitLabel = new_name("exit")
+        Seq(List(
+          Label(loopLabel),
+          CJump(Unop("NOT", code(cond, level, fname)), exitLabel),
+          code(stmt, level, fname, exitLabel),
+          Jump(loopLabel),
+          Label(exitLabel)
+        ))
+
+      case LoopSt(stmt) =>
+        val loopLabel = new_name("loop")
+        val exitLabel = new_name("exit")
+        Seq(List(
+          Label(loopLabel),
+          code(stmt, level, fname, exitLabel),
+          Jump(loopLabel),
+          Label(exitLabel)
+        ))
+
+      case ExitSt() => Jump(exit_label)
+
+      case ReturnValueSt(e) =>
+        Seq(List(
+          Move(Reg("a0"), code(e, level, fname)),
+          Move(Reg("ra"), Mem(Binop("PLUS", Reg("fp"), IntValue(-4)))),
+          Move(Reg("sp"), Reg("fp")),
+          Move(Reg("fp"), Mem(Reg("fp"))),
+          Return()
+        ))
+
+      case ReturnSt() =>
+        Seq(List(
+          Move(Reg("ra"), Mem(Binop("PLUS", Reg("fp"), IntValue(-4)))),
+          Move(Reg("sp"), Reg("fp")),
+          Move(Reg("fp"), Mem(Reg("fp"))),
+          Return()
+        ))
    }
 
   /** return the IR code for the declaration block of function fname
@@ -170,17 +344,23 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
            }
 
       /* PUT YOUR CODE HERE */
+      case VarDef(vn, t, e) =>
+        val typeToUse = t match {
+          case AnyType() => typechecker.typecheck(e)
+          case _ => t
+        }
+        val v = allocate_variable(vn, typeToUse, fname)
+        Move(v, code(e, level, fname))
 
-      case _ => throw new Error("Wrong statement: " + e)
+      case TypeDef(name, t) =>
+        st.insert(name, TypeDeclaration(t))
+        Seq(List())
     }
 
-    def code ( e: Program ): IRstmt =
-      e match {
-        case Program(b@BlockSt(_,_))
-          => st.begin_scope()
-             val res = code(FuncDef("main",List(),NoType(),b),"",0)
-             st.end_scope()
-             Seq(res::addedCode)
-        case _ => throw new Error("Wrong program "+e);
-      }
+    def code ( e: Program ): IRstmt = {
+      st.begin_scope()
+      val res = code(FuncDef("main",List(),NoType(),e.body),"",0)
+      st.end_scope()
+      Seq(res::addedCode)
+    }
 }
