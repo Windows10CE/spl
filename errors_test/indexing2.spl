@@ -1,0 +1,4 @@
+var a = [1, 2, 3];
+var i = true;
+
+print("Did you know that in C a[i] == i[a]", a[i]);

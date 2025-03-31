@@ -1,0 +1,5 @@
+def doesNotReturnExpr() {
+    return "But what if I do anyway?";
+};
+
+print( doesNotReturnExpr() );

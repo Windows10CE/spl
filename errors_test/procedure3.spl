@@ -1,0 +1,5 @@
+def doesExist(x: string) {
+  print(x);
+};
+
+doesExistNot("Hello World!");

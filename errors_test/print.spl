@@ -1,0 +1,1 @@
+print ( {a="Hello", b="World", c="I think the print does not work"} );

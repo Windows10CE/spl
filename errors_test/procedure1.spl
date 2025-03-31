@@ -1,0 +1,5 @@
+def foo() {
+  print("This guy takes zero parameters!");
+};
+
+foo("Really, you are gonna try this again?");

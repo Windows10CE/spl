@@ -1,0 +1,3 @@
+var a = array("50", 10);
+
+print("How many 10s do we have here?");

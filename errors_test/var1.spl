@@ -1,0 +1,7 @@
+def letMeChange(): int {
+    return 3;
+};
+
+letMeChange = 5;
+
+print("I changed the return value! ", letMeChange());

@@ -1,0 +1,1 @@
+print( 1 == "1", "the amazing thing is that this is true in some languages");

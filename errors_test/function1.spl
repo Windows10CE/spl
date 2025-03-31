@@ -1,0 +1,5 @@
+def zeroParams(): string {
+  return "What did you expect";
+};
+
+print( zeroParams("Don't try this at home") );

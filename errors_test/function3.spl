@@ -1,0 +1,5 @@
+def returnTrue(): boolean {
+  return true;
+};
+
+print(returnFalse());

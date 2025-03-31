@@ -1,0 +1,4 @@
+var x = 6;
+
+x(x+1);
+print("Not again x, come on...");

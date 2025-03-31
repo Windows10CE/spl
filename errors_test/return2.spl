@@ -1,0 +1,5 @@
+def notReturningWhatIShould(): int {
+    return "no I don't think I will";
+};
+
+print( notReturningWhatIShould() );

@@ -1,0 +1,3 @@
+var x = -true;
+
+print("I wonder what -true does...", x);

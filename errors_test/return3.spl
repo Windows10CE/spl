@@ -1,0 +1,7 @@
+def shouldReturnButIDontWantTo(): int {
+    print("I'm not doing it");
+
+    return;
+};
+
+print("This can't be good");

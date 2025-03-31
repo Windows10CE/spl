@@ -1,0 +1,3 @@
+var totallyRealArray = 100;
+
+print("With the power of casting, this is legal in C too", totallyRealArray[3]);

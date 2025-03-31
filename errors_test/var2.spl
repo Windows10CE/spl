@@ -1,0 +1,3 @@
+var x: int = "int";
+
+print("I don't know what x is trying here to be honest");

@@ -1,0 +1,1 @@
+print( true + false, "that has to be 1, right?" );

@@ -1,0 +1,4 @@
+var x = "hi";
+x = 1;
+
+print("Unlike python, this is not possible");

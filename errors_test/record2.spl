@@ -1,0 +1,3 @@
+var x = { left=(), info=3, right=() };
+
+print( "x's string value ", x.theStringField );

@@ -110,10 +110,8 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
 
       case CallExp(name, args) => emit_call(Call, name, args, level, fname)
 
-      case r @ RecordExp(fields) =>
-        val rec = allocate_variable("RecordExp", typechecker.typecheck(r), fname)
-        // todo: why does the solution do this
-        name_counter += 1
+      case RecordExp(fields) =>
+        val rec = allocate_variable(new_name("RecordExp"), typechecker.typecheck(e), fname)
         ESeq(
           Seq(
             Move(rec, Allocate(IntValue(fields.length)))
@@ -206,11 +204,13 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
       case ForSt(v,a,b,c,s)
         => val loop = new_name("loop")
            val exit = new_name("exit")
+           st.begin_scope()
            val cv = allocate_variable(v,IntType(),fname)
            val ca = code(a,level,fname)
            val cb = code(b,level,fname)
            val cc = code(c,level,fname)
            val cs = code(s,level,fname,exit)
+           st.end_scope()
            Seq(List(Move(cv,ca),  // needs cv, not Mem(cv)
                     Label(loop),
                     CJump(Binop("GT",cv,cb),exit),
@@ -225,11 +225,11 @@ class Code ( tc: TypeChecker ) extends CodeGenerator(tc) {
       case CallSt(name, args) => emit_call(CallP, name, args, level, fname)
       
       case BlockSt(decls, stmts) =>
-        Seq(
-          decls.map(code(_, fname, level))
-          :::
-          stmts.map(code(_, level, fname, exit_label))
-        )
+        st.begin_scope()
+        val declCode = decls.map(code(_, fname, level))
+        val stmtCode = stmts.map(code(_, level, fname, exit_label))
+        st.end_scope()
+        Seq(declCode ::: stmtCode)
 
       case ReadSt(args) =>
         Seq(
