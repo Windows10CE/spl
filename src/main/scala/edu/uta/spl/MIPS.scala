@@ -73,11 +73,13 @@ class Mips extends MipsGenerator {
   }
 
   /** emit MIPS code with operands */
-  def mips ( op: String, args: String ) {
+  def mips ( op: String, args: Any* ) {
     SPL.out.print("        " + op)
     for ( i <- op.length to 10)
         SPL.out.print(" ")
-    SPL.out.println(args)
+    SPL.out.print(args(0))
+    for (extraArg <- args.tail)
+      SPL.out.print(extraArg)
   }
 
   /** a pool of temporary registers */
@@ -153,6 +155,41 @@ class Mips extends MipsGenerator {
            res
 
       /* PUT YOUR CODE HERE */
+      case Reg(r) => Register(r)
+
+      case IntValue(v) =>
+        val reg = rpool.get()
+        mips("li", v)
+        reg
+
+      case FloatValue(v) =>
+        val reg = rpool.get()
+        mips("li", v)
+        reg
+
+      case StringValue(v) =>
+        mips(".data")
+        mips(".align", "2")
+        val label = new_label()
+        mips_label(label)
+        mips(".asciiz", '"' + v + '"')
+        mips(".text")
+        val reg = rpool.get()
+        mips("la", reg, label)
+        reg
+
+      case Binop("PLUS", left, right) =>
+        val leftReg = emit(left)
+        val rightReg = emit(right)
+        val reg = rpool.get()
+        mips("addu", reg, leftReg, rightReg)
+        reg
+
+      case Mem(addr) =>
+        val addrReg = emit(addr)
+        val reg = rpool.get()
+        mips("lw", reg, s"($$$reg)")
+        reg
 
       case _ => throw new Error("*** Unknown IR: "+e)
     }
@@ -167,6 +204,13 @@ class Mips extends MipsGenerator {
            rpool.recycle(src)
 
       /* PUT YOUR CODE HERE */
+      case Label(name) => mips_label(name)
+
+      case Move(Reg(dest), src) =>
+        mips("move", dest, emit(src))
+
+      case Move(Mem(Reg(addr)), Reg(src)) =>
+        mips("sw", src, s"($$$addr)")
 
       case _ => throw new Error("*** Unknown IR "+e)
     }
