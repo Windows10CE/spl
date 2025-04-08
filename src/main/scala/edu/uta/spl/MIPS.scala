@@ -145,7 +145,7 @@ class Mips extends MipsGenerator {
       case Call(f,sl,args) =>
         emit_call(f, sl, args)
         val res = rpool.get()
-        mips("move", res + ", $a0")
+        mips("move", res, "$a0")
         /* You shouldn't just return $a0 */
         res
 
